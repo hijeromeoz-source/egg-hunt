@@ -286,9 +286,10 @@
       .map((r, bodyIdx) => ({ r, bodyIdx }))
       .filter(({r}) => r.some(cell => cell && cell.trim().length))
       .map(({r, bodyIdx}) => {
-        const [title, location, description, careerLink, websiteLink, applyLink, foundOn, postedOn, postedOnEgg, rating] = r;
+        // Mapped to your exact columns:
+        // [title, company, location, description, careerPage, careerBoard, website, apply, foundOn, foundDate, postDate, rating]
+        const [title, company, location, description, careerPage, careerBoard, websiteLink, applyLink, foundOn, foundOnDate, jobPostDate, rating] = r;
 
-        // Keep the real spreadsheet row even when there are blank rows between jobs.
         const rowNumber = bodyIdx + 2;
         const key = `row:${rowNumber}`;
 
@@ -299,9 +300,17 @@
 
         return {
           key, rowNumber,
-          title:title||"Untitled role", location:location||"", description:description||"",
-          careerLink:careerLink||"", websiteLink:websiteLink||"", applyLink:applyLink||"",
-          foundOn:foundOn||"", postedOn:postedOn||"", postedOnEgg:postedOnEgg||"", rating:rating||"",
+          title: title||"Untitled role", 
+          company: company||"", 
+          location: location||"", 
+          description: description||"",
+          careerPage: careerPage||"", 
+          careerBoard: careerBoard||"", 
+          websiteLink: websiteLink||"", 
+          applyLink: applyLink||"",
+          foundOn: foundOn||"", 
+          postedOn: foundOnDate||"", 
+          rating: rating||"",
           sheetStatus
         };
       });
@@ -318,8 +327,6 @@
   }
 
   function statusOf(job){
-    // trust the sheet once it actually has a value written; otherwise fall back
-    // to this browser's local copy so nothing reverts before a sync completes
     if(statusColIdx > -1 && job.sheetStatus) return job.sheetStatus;
     return getLocalStatuses()[job.key] || "unseen";
   }
@@ -370,8 +377,6 @@
     };
 
     try{
-      // Write Status first, then Status Updated. Separate writes make it much
-      // easier to diagnose and avoid batch-update issues with later rows.
       const statusRes = await refreshTokenAndRetry(
         () => writeCell(statusColIdx, STATUS_VALUES[status] || "")
       );
@@ -427,7 +432,8 @@
   }
 
   function jobRow(j, currentStatus){
-    const chips = [j.location, j.foundOn, j.postedOn].filter(Boolean);
+    // Displays company name and details cleanly as chips
+    const chips = [j.company, j.location, j.foundOn].filter(Boolean);
     return `
       <div class="job" data-key="${escapeAttr(j.key)}">
         <div class="job-top">
@@ -438,7 +444,8 @@
         ${j.description ? `<p class="job-desc">${escapeHtml(j.description)}</p>` : ""}
         <div class="job-links">
           ${j.applyLink ? `<a href="${escapeAttr(j.applyLink)}" target="_blank" rel="noopener">Apply now →</a>` : ""}
-          ${j.careerLink ? `<a href="${escapeAttr(j.careerLink)}" target="_blank" rel="noopener">Career page →</a>` : ""}
+          ${j.careerPage ? `<a href="${escapeAttr(j.careerPage)}" target="_blank" rel="noopener">Career page →</a>` : ""}
+          ${j.careerBoard ? `<a href="${escapeAttr(j.careerBoard)}" target="_blank" rel="noopener">Career board →</a>` : ""}
           ${j.websiteLink ? `<a href="${escapeAttr(j.websiteLink)}" target="_blank" rel="noopener">Company site →</a>` : ""}
         </div>
         <div class="job-actions">
@@ -467,8 +474,8 @@
     const newStatus = btn.dataset.action;
 
     const previousStatus = statusOf(job);
-    job.sheetStatus = newStatus;         // optimistic, in-memory
-    setLocalStatus(key, newStatus);      // local fallback / instant persistence
+    job.sheetStatus = newStatus;         
+    setLocalStatus(key, newStatus);      
 
     renderCounts();
     const currentStatusKey = Object.keys(labels).find(k => labels[k] === modalTitle.textContent) || "unseen";
@@ -499,7 +506,6 @@
 
   function escapeHtml(str){ return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function escapeAttr(str){ return escapeHtml(str); }
-  function truncate(str, n){ return str.length > n ? str.slice(0, n).trim() + "…" : str; }
 
   const pill = document.getElementById("statusPill");
   const footNote = document.getElementById("footNote");
@@ -531,7 +537,6 @@
   refreshBtn.addEventListener("click", loadJobs);
   loadJobs();
 
-  // ---- Google sign-in ----
   const connectBtn = document.getElementById("connectBtn");
   const connectLabel = document.getElementById("connectLabel");
 
