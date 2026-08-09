@@ -335,58 +335,69 @@
 
   async function writeStatusToSheet(job, status){
     if(!accessToken) return { ok:false, reason:"not-connected" };
+    if(statusColIdx === -1) return { ok:false, reason:"no-status-column" };
 
-    const data = [];
-    if(statusColIdx > -1){
-      data.push({
-        range: `${SHEET_NAME}!${colIndexToLetter(statusColIdx)}${job.rowNumber}`,
-        values: [[STATUS_VALUES[status] || ""]]
-      });
-    }
-    if(statusUpdatedColIdx > -1){
-      data.push({
-        range: `${SHEET_NAME}!${colIndexToLetter(statusUpdatedColIdx)}${job.rowNumber}`,
-        values: [[new Date().toISOString()]]
-      });
-    }
-    if(!data.length) return { ok:false, reason:"no-status-columns" };
+    const writeCell = async (colIdx, value) => {
+      const range = `${SHEET_NAME}!${colIndexToLetter(colIdx)}${job.rowNumber}`;
+      const res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`,
+        {
+          method: "PUT",
+          headers: {
+            "Authorization": "Bearer " + accessToken,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ range, majorDimension:"ROWS", values:[[value]] })
+        }
+      );
+      return res;
+    };
 
-    const doWrite = () => fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + accessToken,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ valueInputOption: "RAW", data })
-      }
-    );
+    const refreshTokenAndRetry = async (fn) => {
+      let res = await fn();
+      if(res.status !== 401 || !tokenClient) return res;
+
+      await new Promise(resolve => {
+        const oldCallback = tokenClient.callback;
+        tokenClient.callback = (resp) => {
+          if(resp.access_token) accessToken = resp.access_token;
+          tokenClient.callback = oldCallback;
+          resolve();
+        };
+        tokenClient.requestAccessToken({ prompt:"" });
+      });
+      return fn();
+    };
 
     try{
-      let res = await doWrite();
+      // Write Status first, then Status Updated. Separate writes make it much
+      // easier to diagnose and avoid batch-update issues with later rows.
+      const statusRes = await refreshTokenAndRetry(
+        () => writeCell(statusColIdx, STATUS_VALUES[status] || "")
+      );
 
-      // Refresh an expired Google access token once, then retry the same write.
-      if(res.status === 401 && tokenClient){
-        await new Promise(resolve => {
-          const previousCallback = tokenClient.callback;
-          tokenClient.callback = (resp) => {
-            if(resp.access_token) accessToken = resp.access_token;
-            tokenClient.callback = previousCallback;
-            resolve();
-          };
-          tokenClient.requestAccessToken({ prompt:"" });
-        });
-        res = await doWrite();
+      if(!statusRes.ok){
+        let detail = "";
+        try {
+          const err = await statusRes.json();
+          detail = err?.error?.message ? ": " + err.error.message : "";
+        } catch(_){}
+        return { ok:false, reason:"status-http-" + statusRes.status + detail };
       }
 
-      if(!res.ok){
-        let detail = "";
-        try{
-          const err = await res.json();
-          detail = err?.error?.message ? ": " + err.error.message : "";
-        }catch(_){}
-        return { ok:false, reason:"http-" + res.status + detail };
+      if(statusUpdatedColIdx > -1){
+        const updatedRes = await refreshTokenAndRetry(
+          () => writeCell(statusUpdatedColIdx, new Date().toISOString())
+        );
+
+        if(!updatedRes.ok){
+          let detail = "";
+          try {
+            const err = await updatedRes.json();
+            detail = err?.error?.message ? ": " + err.error.message : "";
+          } catch(_){}
+          return { ok:false, reason:"status-updated-http-" + updatedRes.status + detail };
+        }
       }
 
       return { ok:true };
@@ -452,7 +463,7 @@
     if(!btn) return;
     const jobEl = e.target.closest(".job");
     const key = jobEl.getAttribute("data-key");
-    const job = jobs.find(j => j.key === key);
+    const job = jobs.find(j => String(j.key) === String(key));
     const newStatus = btn.dataset.action;
 
     const previousStatus = statusOf(job);
