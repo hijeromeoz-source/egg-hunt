@@ -182,7 +182,7 @@
   <div class="masthead">
     <div>
       <span class="file-no" id="statusPill">Connecting to sheet…</span>
-      <h1>Egg Hunt</h1>
+      <h1>Egg Hunt 2.0 🐰🎉</h1>
       <p>Our Main goal is to get punkpunk job by end of 2026. who will come first choppa or punkpunk's job?</p>
     </div>
     <div>
@@ -488,7 +488,7 @@
       <div class="job" data-key="${escapeAttr(j.key)}">
         <div class="job-top">
           <p class="job-title">${escapeHtml(j.title)}</p>
-          ${j.rating ? `<span class="job-rating">★ ${escapeHtml(j.rating)}</span>` : ""}
+          ${j.rating ? `<span class="job-rating">$ ${escapeHtml(j.rating)}</span>` : ""}
         </div>
         ${chips.length ? `<div class="job-chips">${chips.map(c => `<span class="job-chip">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
         ${j.description ? `<p class="job-desc">${escapeHtml(j.description)}</p>` : ""}
